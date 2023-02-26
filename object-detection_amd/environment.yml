@@ -1,0 +1,19 @@
+name: epos
+channels:
+   - conda-forge
+   - mjirik
+dependencies:
+  - python=3.6.10
+  - cmake
+  - numpy=1.16.6
+  - pyyaml=5.3.1
+  - opencv=3.4.2
+  - tensorflow=1.12.0
+  - pandas=1.0.5
+  - tabulate=0.8.3
+  - imageio=2.9.0
+  - pypng=0.0.18
+  - igl
+  - glog=0.4.0
+
+

@@ -1,0 +1,80 @@
+ARG CONTAINER_VERSION=latest
+#FROM felice/realsense2:$CONTAINER_VERSION
+FROM felice/object-detection:arm64-r32.7.1
+#FROM ubuntu:20.04
+
+
+USER root
+
+
+RUN conda init bash
+RUN conda env create -f environment.yml
+RUN echo "conda activate epos" >> ~/.bashrc
+SHELL ["conda","run","-n", "epos","/bin/bash","-c"]
+
+# create env_vars.sh
+ENV USERNAME=nvidia
+RUN mkdir -p /home/lele/anaconda3/envs/epos/etc/conda/activate.d
+ENV CONDA_PREFIX=/home/lele/anaconda3/envs/epos/etc/conda/activate.d
+COPY env_vars.sh $CONDA_PREFIX 
+ENV EPOS_PATH=/home/$USERNAME/Codes/epos
+ENV REPO_PATH=/home/$USERNAME/Codes/epos/repository
+ENV STORE_PATH=/home/$USERNAME/Codes/epos/store
+ENV BOP_PATH=/home/$USERNAME/Codes/epos/datasets
+ENV TF_DATA_PATH=$STORE_PATH/tf_data
+ENV TF_MODELS_PATH=$STORE_PATH/tf_models
+ENV PYTHONPATH=$REPO_PATH:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/bop_renderer/build:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/bop_toolkit:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/progressive-x/build:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/slim:$PYTHONPATH
+ENV LD_LIBRARY_PATH=$REPO_PATH/external/llvm/lib:$LD_LIBRARY_PATH
+
+# Create dirs, copy and unzip epos (repository, store, datasets) and catkin workspaces (odl and firos) (git)
+RUN mkdir -p /home/$USERNAME/Codes/epos
+RUN mkdir -p /home/$USERNAME/catkin_ws/src
+#ADD datasets.tar.xz /home/$USERNAME/Codes/epos
+#ADD store.tar.xz /home/$USERNAME/Codes/epos
+#ADD repository.tar.xz /home/$USERNAME/Codes/epos
+#ADD firos.tar.xz /home/$USERNAME/catkin_ws/src
+#ADD odl.tar.xz /home/$USERNAME/catkin_ws/src
+
+#RUN mkdir -p /home/$USERNAME/Codes/epos/repository
+RUN git clone --recurse-submodules https://github.com/AlexandraPapadaki/repository.git $EPOS_PATH/
+#RUN mkdir -p /home/$USERNAME/Codes/epos/datasets
+RUN git clone --recurse-submodules https://github.com/AlexandraPapadaki/datasets.git $EPOS_PATH/
+#RUN mkdir -p /home/$USERNAME/Codes/epos/store
+RUN git clone --recurse-submodules https://github.com/AlexandraPapadaki/store.git $EPOS_PATH/
+
+# TODO Istall osmesa, llvm, renderer, progressive X (below)
+# Install osmesa and llvm
+ENV OSMESA_PREFIX=$REPO_PATH/external/osmesa
+ENV LLVM_PREFIX=$REPO_PATH/external/llvm
+#RUN mkdir $OSMESA_PREFIX &&\ mkdir $LLVM_PREFIX
+#RUN mkdir -p $OSMESA_PREFIX &&\ mkdir -p $LLVM_PREFIX
+RUN cd $REPO_PATH/external/bop_renderer/osmesa-install
+#RUN cd /home/nvidia/Codes/epos/repository/external/bop_renderer/osmesa-install
+#RUN mkdir build
+#RUN cd /build
+# TODO - RUN bash ../osmesa-install.sh
+
+# Compile renderer
+RUN cd $REPO_PATH/external/bop_renderer
+RUN mkdir build &&\ cd build
+ENV PYTHON_PREFIX=$CONDA_PREFIX
+RUN cmake .. -DCMAKE_BUILD_TYPE=Release
+RUN make -j8
+
+# Compile ProgressiveX
+RUN cd $REPO_PATH/external/progressive-x/build
+RUN cmake .. -DCMAKE_BUILD_TYPE=Release
+RUN make -j8
+
+# Clone Firos and Odl workspaces
+ENV CATKIN_PATH=/home/$USERNAME/catkin_ws
+ENV CATKIN_SRC_PATH=/home/$USERNAME/catkin_ws/src
+RUN mkdir -p /home/$USERNAME/catkin_ws/src
+RUN git clone --recurse-submodules https://github.com/AlexandraPapadaki/firos.git $CATKIN_SRC_PATH/
+RUN git clone --recurse-submodules https://github.com/AlexandraPapadaki/odl.git $CATKIN_SRC_PATH/
+RUN cd /home/$USERNAME/catkin_ws
+RUN /bin/bash -c '. /opt/ros/kinetic/setup.bash; cd $CATKIN_PATH; catkin_make'

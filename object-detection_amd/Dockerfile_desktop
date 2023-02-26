@@ -1,0 +1,120 @@
+ARG CONTAINER_VERSION=latest
+#FROM felice/realsense2:$CONTAINER_VERSION
+#FROM felice/realsense2:arm64-r32.7.1
+FROM ubuntu:20.04
+
+
+USER root
+
+# install anaconda 
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+ENV PATH /opt/conda/bin:$PATH
+
+# hadolint ignore=DL3008
+RUN set -x && \
+    apt-get update --fix-missing && \
+    apt-get install -y --no-install-recommends \
+        bzip2 \
+        ca-certificates \
+        git \
+        libglib2.0-0 \
+        libsm6 \
+        libxcomposite1 \
+        libxcursor1 \
+        libxdamage1 \
+        libxext6 \
+        libxfixes3 \
+        libxi6 \
+        libxinerama1 \
+        libxrandr2 \
+        libxrender1 \
+        mercurial \
+        openssh-client \
+        procps \
+        subversion \
+        wget \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* 
+
+CMD [ "/bin/bash" ]
+
+# create anaconda env
+SHELL ["/bin/bash", "--login", "-c"]
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+RUN bash Miniconda3-latest-Linux-x86_64.sh -b -p /miniconda
+ENV PATH=$PATH:/miniconda/pcondabin:/miniconda/bin
+COPY ./environment.yml .
+RUN conda init bash
+RUN conda env create -f environment.yml
+RUN echo "conda activate epos" >> ~/.bashrc
+SHELL ["conda","run","-n", "epos","/bin/bash","-c"]
+
+# create env_vars.sh
+ENV USERNAME=lele
+RUN mkdir -p /home/lele/anaconda3/envs/epos/etc/conda/activate.d
+ENV CONDA_PREFIX=/home/lele/anaconda3/envs/epos/etc/conda/activate.d
+COPY env_vars.sh $CONDA_PREFIX 
+
+# create environmental variables
+ENV REPO_PATH=/home/$USERNAME/Codes/epos/repository
+ENV STORE_PATH=/home/$USERNAME/Codes/epos/store
+ENV BOP_PATH=/home/$USERNAME/Codes/epos/datasets
+ENV TF_DATA_PATH=$STORE_PATH/tf_data
+ENV TF_MODELS_PATH=$STORE_PATH/tf_models
+ENV PYTHONPATH=$REPO_PATH:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/bop_renderer/build:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/bop_toolkit:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/progressive-x/build:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/slim:$PYTHONPATH
+ENV LD_LIBRARY_PATH=$REPO_PATH/external/llvm/lib:$LD_LIBRARY_PATH
+
+# Clone repos for EPOS
+ENV EPOS_PATH=/home/$USERNAME/Codes/epos/repository
+#RUN mkdir -p /home/lele/Codes/epos/repository
+RUN git clone --recurse-submodules https://github.com/AlexandraPapadaki/repository.git $EPOS_PATH/
+#RUN mkdir -p /home/lele/Codes/epos/datasets
+RUN git clone --recurse-submodules https://github.com/AlexandraPapadaki/datasets.git $EPOS_PATH/
+#RUN mkdir -p /home/lele/Codes/epos/store
+RUN git clone --recurse-submodules https://github.com/AlexandraPapadaki/store.git $EPOS_PATH/
+
+#RUN pip install gdown
+#RUN gdown "https://drive.google.com/uc?export=download&id=116UEwIDIs0ks2uVEBSbpmyfzkDL6jBeT"
+
+#RUN apt-get update && apt-get -y install cmake
+#RUN apt-get update
+#RUN apt -y install cmake
+
+# Install osmesa and llvm
+ENV OSMESA_PREFIX=$REPO_PATH/external/osmesa
+ENV LLVM_PREFIX=$REPO_PATH/external/llvm
+#RUN mkdir $OSMESA_PREFIX &&\ mkdir $LLVM_PREFIX
+RUN cd $REPO_PATH/external/bop_renderer/osmesa-install
+RUN mkdir build #&&\ cd build
+#RUN bash ../osmesa-install.sh
+
+# Compile renderer
+RUN cd $REPO_PATH/external/bop_renderer
+#RUN mkdir build &&\ cd build
+RUN cd build
+ENV PYTHON_PREFIX=$CONDA_PREFIX
+RUN cmake .. -DCMAKE_BUILD_TYPE=Release
+RUN make -j8
+
+# ProgressiveX
+# Install Renderer and ProgressiveX
+RUN cd $REPO_PATH/external/bop_renderer
+RUN mkdir build &&\ cd build
+RUN cmake .. -DCMAKE_BUILD_TYPE=Release
+RUN make -j8
+RUN cd $REPO_PATH/external/progressive-x/build
+RUN cmake .. -DCMAKE_BUILD_TYPE=Release
+RUN make -j8
+
+# Clone Firos and Odl workspaces
+ENV CATKIN_PATH=/home/$USERNAME/catkin_ws
+ENV CATKIN_SRC_PATH=/home/$USERNAME/catkin_ws/src
+RUN mkdir -p /home/lele/catkin_ws/src
+RUN git clone --recurse-submodules https://github.com/AlexandraPapadaki/firos.git $CATKIN_SRC_PATH/
+RUN git clone --recurse-submodules https://github.com/AlexandraPapadaki/odl.git $CATKIN_SRC_PATH/
+RUN /bin/bash -c '. /opt/ros/noetic/setup.bash; cd $CATKIN_PATH; catkin_make'
+

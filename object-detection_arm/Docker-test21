@@ -1,0 +1,227 @@
+ARG CONTAINER_VERSION=latest
+#FROM felice/realsense2:$CONTAINER_VERSION
+#FROM felice/realsense2:arm64-r32.7.1
+FROM felice/realsense2:object-detection
+#FROM ubuntu:20.04
+
+
+USER root
+
+# Install pip3
+RUN apt-get install python3-pip 
+
+# Install EPOS (https://github.com/thodan/epos) requirements
+# Install Opencv 3.4.2
+ENV MY_OPENCV_RELEASE=3.4.2
+RUN cd /tmp && \
+    git clone https://github.com/opencv/opencv.git && \
+    git clone https://github.com/opencv/opencv_contrib.git && \
+    cd opencv && \
+    git checkout $MY_OPENCV_RELEASE && \
+    cd ../opencv_contrib && \
+    git checkout $MY_OPENCV_RELEASE && \
+    cd ../opencv && \
+    mkdir build && \
+    cd build && \
+    cmake -D CMAKE_INSTALL_PREFIX=/usr/local \
+          -D BUILD_TIFF=ON \
+          -D BUILD_JPEG=OFF \
+          -D WITH_JPEG=ON \
+          -D BUILD_SHARED_LIBS=ON \
+          -D BUILD_EXAMPLES=OFF \
+          -D BUILD_DOCS=OFF \
+          -D OpenGL_GL_PREFERENCE=GLVND \
+          -D WITH_CUDA=ON \
+          -D WITH_CUFFT=ON \
+          -D WITH_CUBLAS=ON \
+          -D BUILD_CUDA_STUBS=OFF \
+          -D ENABLE_FAST_MATH=1 \
+          -D CUDA_FAST_MATH=1 \
+          -D WITH_CUBLAS=ON \
+          -D CPU_DISPATCH=$CPU_DISPATCH \
+          -D WITH_OPENGL=ON \
+          -D WITH_QT=OFF \
+          -D WITH_IPP=ON \
+          -D WITH_TBB=ON \
+          -D FORCE_VTK=ON \
+          -D WITH_V4L=ON \
+          -D WITH_XINE=ON \
+          -D WITH_GDAL=ON \
+          -D WITH_1394=ON \
+          -D WITH_FFMPEG=ON \
+          -D WITH_GSTREAMER=ON \
+          -D WITH_OPENMP=ON \
+          -D WITH_OPENNI=OFF \
+          -D WITH_ITT=OFF \
+          -D BUILD_PROTOBUF=OFF \
+          -D BUILD_TESTS=OFF \
+          -D BUILD_PERF_TESTS=OFF \
+          -D BUILD_opencv_dnn=OFF \
+          -D BUILD_opencv_sfm=OFF \
+          -D BUILD_opencv_datasets=OFF \
+          -D BUILD_opencv_bioinspired=OFF \
+          -D BUILD_opencv_bgsegm=OFF \
+          -D BUILD_opencv_hfs=OFF \
+          -D BUILD_opencv_face=OFF \
+          -D BUILD_opencv_freetype=OFF \
+          -D BUILD_opencv_text=OFF \
+          -D BUILD_opencv_ml=OFF \
+          -D BUILD_opencv_surface_matching=OFF \
+          -D CMAKE_BUILD_TYPE=Release \
+          -D OPENCV_EXTRA_MODULES_PATH=../../opencv_contrib/modules .. && \
+    	   make -j5 install && \
+    	   rm -r /tmp/opencv && \
+    	   rm -r /tmp/opencv_contrib
+#          make -j"$(nproc)" install && \
+
+# Install Tensorflow 1.15.5 (requirement was tensorflow-gpu=1.12.0)
+# https://docs.nvidia.com/deeplearning/frameworks/install-tf-jetson-platform/index.html
+#https://developer.download.nvidia.com/compute/redist/jp/v46/tensorflow/
+#RUN apt install -y libhdf5-serial-dev  hdf5-tools libhdf5-dev  zlib1g-dev \
+#	 libjpeg8-dev liblapack-dev  libblas-dev  gfortran
+RUN apt-get install libhdf5-serial-dev 
+RUN apt-get install hdf5-tools 
+RUN apt-get install libhdf5-dev 
+RUN apt-get install zlib1g-dev 
+RUN yes | apt-get install zip libjpeg8-dev 
+RUN yes | apt-get install liblapack-dev 
+RUN yes | apt-get install libblas-dev 
+RUN yes | apt-get install gfortran 
+#duplicate RUN apt-get install python3-pip 
+RUN pip3 install -U pip testresources setuptools==49.6.0 
+RUN pip3 install -U --no-deps numpy==1.19.4 future==0.18.2 mock==3.0.5 keras_preprocessing==1.1.2 keras_applications==1.0.8 gast==0.4.0 protobuf pybind11 cython pkgconfig packaging
+RUN env H5PY_SETUP_REQUIRES=0 pip3 install -U h5py==3.1.0 
+#RUN pip3 install --extra-index-url https://developer.download.nvidia.com/compute/redist/jp/v46 tensorflow-gpu==1.13.1
+#RUN pip3 install --extra-index-url https://developer.download.nvidia.com/compute/redist/jp/v46 tensorflow-gpu==1.15.5+nv21.12
+RUN pip3 install --extra-index-url https://developer.download.nvidia.com/compute/redist/jp/v46 tensorflow==1.15.5+nv21.12
+
+# Install Pypng
+RUN pip3 install pypng==0.0.18
+
+# Install miniconda
+CMD [ "/bin/bash" ]
+#ENV PYTHONNOUSERSITE=0
+# create anaconda env
+SHELL ["/bin/bash", "--login", "-c"]
+#RUN conda create -n epos python=3.6.10
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-py37_4.12.0-Linux-aarch64.sh
+RUN bash Miniconda3-py37_4.12.0-Linux-aarch64.sh -b -p /miniconda
+ENV PATH=$PATH:/miniconda/pcondabin:/miniconda/bin
+
+# Create conda environment with remaining requirements
+COPY ./environment.yml .
+RUN conda init bash
+RUN conda env create -f environment.yml
+RUN echo "conda activate epos" >> ~/.bashrc
+SHELL ["conda","run","-n", "epos","/bin/bash","-c"]
+#RUN echo "conda activate myenv" > ~/.bashrc
+#RUN conda activate epos
+#RUN conda install numpy=1.16.6
+#RUN conda install tensorflow-gpu=1.12.0
+#RUN conda install pyyaml=5.3.1
+#RUN conda install opencv=3.4.2
+#RUN conda install pandas=1.0.5
+#RUN conda install tabulate=0.8.3
+#RUN conda install imageio=2.9.0
+#RUN conda install -c mjirik pypng=0.0.18
+#RUN conda install -c conda-forge igl
+#RUN conda install glog=0.4.0
+
+# create env_vars.sh
+ENV USERNAME=nvidia
+RUN mkdir -p /home/$USERNAME/miniconda/envs/epos/etc/conda/activate.d
+WORKDIR $CONDA_PREFIX/etc/conda/activate.d
+COPY env_vars.sh $CONDA_PREFIX/envs/epos/etc/conda/activate.d
+
+ENV EPOS_PATH=/home/$USERNAME/Codes/epos
+ENV REPO_PATH=/home/$USERNAME/Codes/epos/repository
+ENV STORE_PATH=/home/$USERNAME/Codes/epos/store
+ENV BOP_PATH=/home/$USERNAME/Codes/epos/datasets
+ENV TF_DATA_PATH=$STORE_PATH/tf_data
+ENV TF_MODELS_PATH=$STORE_PATH/tf_models
+ENV PYTHONPATH=$REPO_PATH:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/bop_renderer/build:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/bop_toolkit:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/progressive-x/build:$PYTHONPATH
+ENV PYTHONPATH=$REPO_PATH/external/slim:$PYTHONPATH
+ENV LD_LIBRARY_PATH=$REPO_PATH/external/llvm/lib:$LD_LIBRARY_PATH
+
+# IGL
+RUN git clone  https://github.com/libigl/libigl.git && \
+    cd libigl && \
+    git checkout -b  "v2.2.1" && \
+    mkdir   build  &&\
+    cd build &&  \
+    cmake ../
+
+# Create dirs, copy and unzip epos (repository, store, datasets) and catkin workspaces (odl and firos) (git)
+RUN mkdir -p /home/$USERNAME/Codes/epos
+ENV EPOS_PATH=/home/$USERNAME/Codes/epos
+WORKDIR /home/$USERNAME/Codes/epos
+RUN git clone https://github.com/AlexandraPapadaki/store.git
+RUN git clone https://github.com/AlexandraPapadaki/datasets.git
+
+#RUN git clone --recurse-submodules https://github.com/dkalog/epos-repository.git $REPO_PATH/
+ADD repository.tar.xz $EPOS_PATH
+
+# TODO Istall osmesa, llvm, renderer, progressive X (below)
+# Install osmesa and llvm
+ENV OSMESA_PREFIX=$REPO_PATH/external/osmesa
+ENV LLVM_PREFIX=$REPO_PATH/external/llvm
+WORKDIR $EPOS_PATH/repository
+WORKDIR $EPOS_PATH/repository/external/bop_renderer
+WORKDIR $EPOS_PATH/repository/external/bop_renderer/osmesa-install/build
+RUN pip install mako
+RUN bash ../osmesa-install.sh
+
+#RUN rostopic list
+WORKDIR $REPO_PATH/external/bop_renderer
+RUN ls
+RUN rm -rf build
+RUN ls
+RUN mkdir build
+RUN ls
+RUN cd build
+WORKDIR $REPO_PATH/external/bop_renderer/build
+ENV PYTHON_PREFIX=$CONDA_PREFIX
+RUN cmake .. -DCMAKE_BUILD_TYPE=Release
+#RUN cmake .. -DPYBIND11_PYTHON_VERSION=3.6
+RUN make -j8
+
+## ProgressiveX
+## Install Renderer and ProgressiveX
+WORKDIR $REPO_PATH/external/progressive-x
+RUN rm -rf build
+RUN ls
+RUN mkdir build
+RUN ls
+RUN cd build
+WORKDIR $REPO_PATH/external/progressive-x/build
+RUN cmake .. -DCMAKE_BUILD_TYPE=Release
+RUN make -j8
+RUN ls
+
+## Clone Firos and Odl workspaces
+ENV CATKIN_PATH=/home/$USERNAME/catkin_ws_test
+ENV CATKIN_SRC_PATH=/home/$USERNAME/catkin_ws_test/src
+# create the catkin_ws and catkin_src before building the docker
+#RUN mkdir -p /home/$USERNAME/catkin_ws_test/src
+WORKDIR $CATKIN_SRC_PATH
+RUN git clone https://github.com/AlexandraPapadaki/firos.git
+RUN git clone https://github.com/AlexandraPapadaki/odl.git
+#RUN /bin/bash -c '. /opt/ros/melodic/setup.bash; cd $CATKIN_PATH; catkin_make'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
